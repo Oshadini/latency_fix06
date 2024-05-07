@@ -205,6 +205,7 @@ if uploaded_file is not None:
       """Getting the base64 string"""
       with open(image_path, "rb") as image_file:
           return base64.b64encode(image_file.read()).decode("utf-8")
+    st.write("images encoded")
     def image_summarize(img_base64, prompt):
       """Make image summary"""
       if immage_sum_model == 'gpt-4-vision-preview':
@@ -229,7 +230,7 @@ if uploaded_file is not None:
       )
       return msg.content
     
-    
+    st.write("images encoded2")
     # Store base64 encoded images
     img_base64_list = []
     
@@ -448,7 +449,6 @@ if uploaded_file is not None:
 if(question):
     response=chain.invoke(question)
     st.write('Response:')
-    with st.container(height=300):
         st.write(response)
     
     
