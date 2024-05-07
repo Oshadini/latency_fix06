@@ -409,34 +409,51 @@ if uploaded_file is not None:
               }
               messages.append(image_message)
       return [HumanMessage(content=messages)]
+
     
-    
-    if generation_model == 'gemini-1.5-pro-latest':
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest",max_output_tokens=1024)
-    else:
-        try:
-          model = ChatOpenAI(model="gpt-4-vision-preview", openai_api_key = openai.api_key, max_tokens=1024)
-        except Exception as e:
-          model = ChatOpenAI(model="gpt-4-turbo", openai_api_key = openai.api_key, max_tokens=1024)
-    
+
+    def multi_modal_rag_chain(retriever):
+    """
+    Multi-modal RAG chain
+    """
+
+    # Multi-modal LLM
+    model = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", max_output_tokens=1024)
+    #try:
+      #model = ChatGoogleGenerativeAI(model="gemini-pro-vision", max_output_tokens=1024)
+    #except Exception as e:
+      #model = ChatGoogleGenerativeAI(model="gemini-pro", max_output_tokens=1024)
+
+    #model = ChatOpenAI(model="gpt-4-vision-preview", openai_api_key = openai.api_key, max_tokens=1024)
+
     # RAG pipeline
     chain = (
-      {
-          "context": retriever_multi_vector_img | RunnableLambda(split_image_text_types),
-          "question": RunnablePassthrough(),
-      }
-      | RunnableLambda(img_prompt_func)
-      | model
-      | StrOutputParser()
+        {
+            "context": retriever | RunnableLambda(split_image_text_types),
+            "question": RunnablePassthrough(),
+        }
+        | RunnableLambda(img_prompt_func)
+        | model
+        | StrOutputParser()
     )
+
+    return chain
+
+    if 'chain_multimodal_rag' not in st.session_state:
+        with st.spinner("Creating chain_multimodal_rag"):
+            chain_multimodal_rag = multi_modal_rag_chain(retriever_multi_vector_img)
+        st.session_state["chain_multimodal_rag"] = chain_multimodal_rag
+    else:
+        chain_multimodal_rag = st.session_state["chain_multimodal_rag"]
+        st.write(f"{bullet_point} Multi vector retreiver is created")  
     
     
-    if(question):
-        response=chain.invoke(question)
-        st.write('Response:')
-        with st.container(height=300):
-            st.write(response)
-        
+if(question):
+    response=chain.invoke(question)
+    st.write('Response:')
+    with st.container(height=300):
+        st.write(response)
+    
     
     
     
