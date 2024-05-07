@@ -207,7 +207,7 @@ if uploaded_file is not None:
       with open(image_path, "rb") as image_file:
           return base64.b64encode(image_file.read()).decode("utf-8")
     st.cache_data()
-   def image_summarize(img_base64, prompt):
+    def image_summarize(img_base64, prompt):
       """Make image summary"""
       if immage_sum_model == 'gpt-4-vision-preview':
         model = ChatOpenAI(
