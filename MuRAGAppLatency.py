@@ -437,13 +437,9 @@ if uploaded_file is not None:
 
         return chain
 
-    if 'chain' not in st.session_state:
-        with st.spinner("Creating chain"):
-            chain = multi_modal_rag_chain(retriever_multi_vector_img)
-        st.session_state["chain"] = chain
-    else:
-        chain = st.session_state["chain"]
-        st.write(f"{bullet_point} Chain is created")  
+
+    chain = multi_modal_rag_chain(retriever_multi_vector_img)
+
     
     
 if(question):
