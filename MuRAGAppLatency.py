@@ -73,7 +73,7 @@ generation_model = st.sidebar.selectbox('Select data', ('gpt-4-vision-preview', 
 
 #st.sidebar.subheader('Line chart parameters')
 #plot_data = st.sidebar.multiselect('Select data', ['temp_min', 'temp_max'], ['temp_min', 'temp_max'])
-max_concurrecy = st.sidebar.slider('Maximum Concurrency', 3, 4, )
+max_concurrecy = st.sidebar.slider('Maximum Concurrency', 3, 4, 10)
 
 st.sidebar.markdown('''
 ---
@@ -444,9 +444,9 @@ if uploaded_file is not None:
         response = chain.invoke(question)
         st.write("Reply: ", response)
 
-        question = st.text_input('Enter a question')    
+    question = st.text_input('Enter a question')    
         
-    if user_question:
+    if question:
         user_input(question)
     
     
