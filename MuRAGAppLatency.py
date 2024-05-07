@@ -73,7 +73,7 @@ generation_model = st.sidebar.selectbox('Select data', ('gpt-4-vision-preview', 
 
 #st.sidebar.subheader('Line chart parameters')
 #plot_data = st.sidebar.multiselect('Select data', ['temp_min', 'temp_max'], ['temp_min', 'temp_max'])
-max_concurrecy = st.sidebar.slider('Maximum Concurrency', 3, 4, 9)
+max_concurrecy = st.sidebar.slider('Maximum Concurrency', 3, 4, )
 
 st.sidebar.markdown('''
 ---
@@ -438,15 +438,16 @@ if uploaded_file is not None:
         return chain
 
 
-    chain = multi_modal_rag_chain(retriever_multi_vector_img)
+
+    def user_input(question):
+        chain = multi_modal_rag_chain(retriever_multi_vector_img)
+        response = chain.invoke(question)
+        st.write("Reply: ", response)
 
     question = st.text_input('Enter a question')    
         
-    if(question):
-        response=chain.invoke(question)
-        st.write('Response:')
-        st.write(response)
-    
+    if user_question
+        user_input(question)
     
     
     
