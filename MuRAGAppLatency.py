@@ -86,7 +86,7 @@ Multi-Modal RAG App with Multi Vector Retriever
 bullet_point = "◇"
 chain = None
 uploaded_file = st.file_uploader(label = "Upload your file",type="pdf")
-question = st.text_input('Enter a question') 
+
 if uploaded_file is not None:
     temp_file="./temp.pdf"
     with open(temp_file,"wb") as file:
@@ -440,7 +440,7 @@ if uploaded_file is not None:
 
     chain = multi_modal_rag_chain(retriever_multi_vector_img)
 
-    
+question = st.text_input('Enter a question')    
     
 if(question):
     response=chain.invoke(question)
