@@ -85,7 +85,7 @@ Multi-Modal RAG App with Multi Vector Retriever
 
 bullet_point = "◇"
 uploaded_file = st.file_uploader(label = "Upload your file",type="pdf")
-
+question = st.text_input('Enter a question') 
 if uploaded_file is not None:
     temp_file="./temp.pdf"
     with open(temp_file,"wb") as file:
@@ -205,6 +205,8 @@ if uploaded_file is not None:
       with open(image_path, "rb") as image_file:
           return base64.b64encode(image_file.read()).decode("utf-8")
     st.write("images encoded")
+
+    st.cache_data()
     def image_summarize(img_base64, prompt):
       """Make image summary"""
       if immage_sum_model == 'gpt-4-vision-preview':
@@ -439,17 +441,14 @@ if uploaded_file is not None:
 
 
 
-    def user_input(question):
-        chain = multi_modal_rag_chain(retriever_multi_vector_img)
-        response = chain.invoke(question)
-        st.write("Reply: ", response)
 
-    question = st.text_input('Enter a question')    
-        
-    if question:
-        user_input(question)
-    
-    
+    chain = multi_modal_rag_chain(retriever_multi_vector_img)
+    if(question):
+    response=chain.invoke(question)
+    st.write('Response from InfoGenie:')
+    with st.container(height=300):
+        st.write(response)
+
     
     
     
