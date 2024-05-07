@@ -232,7 +232,6 @@ if uploaded_file is not None:
       return msg.content
     
     
-    
     # Store base64 encoded images
     img_base64_list = []
     
@@ -262,35 +261,7 @@ if uploaded_file is not None:
     st.write(f"{bullet_point} \t\tImage summaries generation completed") 
     st.write(f"{bullet_point} Summary generation process completed")
     
-    # Store base64 encoded images
-    img_base64_list = []
-    
-    # Store image summaries
-    image_summaries = []
-    
-    # Prompt
-    prompt = """You are an assistant tasked with summarizing images for retrieval. \
-    These summaries will be embedded and used to retrieve the raw image. \
-    Give a concise summary of the image that is well optimized for retrieval."""
-    
-    if 'image_elements' not in st.session_state:
-        with st.spinner("Generating Images summaries......"):
-          # Apply to images
-          for img_file in sorted(os.listdir('./figures')):
-              if img_file.endswith(".jpg"):
-                  img_path = os.path.join('./figures', img_file)
-                  base64_image = encode_image(img_path)
-                  img_base64_list.append(base64_image)
-                  image_summaries.append(image_summarize(base64_image, prompt))
-        st.session_state["img_base64_list"] = img_base64_list
-        st.session_state["image_summaries"] = image_summaries
-    else:
-        img_base64_lists = st.session_state["img_base64_list"]  
-        image_summaries = st.session_state["image_summaries"]  
-    
-    st.write(f"{bullet_point} \t\tImage summaries generation completed") 
-    st.write(f"{bullet_point} Summary generation process completed")  
-    
+
     
     def create_multi_vector_retriever(
       vectorstore, text_summaries, texts, table_summaries, tables, image_summaries, images
