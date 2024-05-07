@@ -318,7 +318,11 @@ if uploaded_file is not None:
         retriever_multi_vector_img = st.session_state["retriever_multi_vector_img"]
     st.write(f"{bullet_point} Multi vector retreiver is created")  
     
-    
+
+if 'retriever_multi_vector_img' in st.session_state:
+
+    retriever_multi_vector_img = st.session_state["retriever_multi_vector_img"]
+
     def looks_like_base64(sb):
       """Check if the string looks like base64"""
       return re.match("^[A-Za-z0-9+/]+[=]{0,2}$", sb) is not None
@@ -440,6 +444,7 @@ if uploaded_file is not None:
         return chain
 
 
+    
 
 
     chain = multi_modal_rag_chain(retriever_multi_vector_img)
