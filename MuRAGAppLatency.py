@@ -84,7 +84,7 @@ Multi-Modal RAG App with Multi Vector Retriever
 
 
 bullet_point = "◇"
-
+chain = None
 uploaded_file = st.file_uploader(label = "Upload your file",type="pdf")
 question = st.text_input('Enter a question') 
 if uploaded_file is not None:
