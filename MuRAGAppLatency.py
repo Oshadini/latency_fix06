@@ -444,10 +444,10 @@ if uploaded_file is not None:
 
     chain = multi_modal_rag_chain(retriever_multi_vector_img)
     if(question):
-    response=chain.invoke(question)
-    st.write('Response from InfoGenie:')
-    with st.container(height=300):
-        st.write(response)
+        response=chain.invoke(question)
+        st.write('Response from InfoGenie:')
+        with st.container(height=300):
+            st.write(response)
 
     
     
