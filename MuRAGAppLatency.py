@@ -245,7 +245,8 @@ if uploaded_file is not None:
     if 'image_elements' not in st.session_state:
         with st.spinner("Generating Images summaries......"):
           # Apply to images
-          for img_file in sorted(os.listdir('./figures')):
+          #for img_file in sorted(os.listdir('./figures')):
+          for img_file in os.listdir('./figures'):
               if img_file.endswith(".jpg"):
                   img_path = os.path.join('./figures', img_file)
                   base64_image = encode_image(img_path)
