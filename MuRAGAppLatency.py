@@ -52,41 +52,311 @@ openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 
 
-st.set_page_config(layout='wide', initial_sidebar_state='expanded')
-
-with open('style.css') as f:
-    st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
-
-st.sidebar.header('Multi-Modal RAG App`PDF`')
-
-st.sidebar.subheader('Text Summarization Model')
-time_hist_color = st.sidebar.selectbox('Summarize by', ('gpt-4-turbo', 'gemini-1.5-pro-latest'))
-
-st.sidebar.subheader('Image Summarization Model')
-immage_sum_model = st.sidebar.selectbox('Summarize by', ('gpt-4-vision-preview', 'gemini-1.5-pro-latest'))
-
-#st.sidebar.subheader('Embedding Model')
-#embedding_model = st.sidebar.selectbox('Select data', ('OpenAIEmbeddings', 'GoogleGenerativeAIEmbeddings'))
-
-st.sidebar.subheader('Response Generation Model')
-generation_model = st.sidebar.selectbox('Select data', ('gpt-4-vision-preview', 'gemini-1.5-pro-latest'))
-
-#st.sidebar.subheader('Line chart parameters')
-#plot_data = st.sidebar.multiselect('Select data', ['temp_min', 'temp_max'], ['temp_min', 'temp_max'])
-max_concurrecy = st.sidebar.slider('Maximum Concurrency', 3, 4, 7)
-
-st.sidebar.markdown('''
----
-Multi-Modal RAG App with Multi Vector Retriever
-''')
-
-#st.write(tables)
 
 
-bullet_point = "◇"
-uploaded_file = st.file_uploader(label = "Upload your file",type="pdf")
-question = st.text_input('Enter a question') 
-if uploaded_file is not None:
+
+
+# Categorize elements by type
+def categorize_elements(_raw_pdf_elements):
+  """
+  Categorize extracted elements from a PDF into tables and texts.
+  raw_pdf_elements: List of unstructured.documents.elements
+  """
+  tables = []
+  texts = []
+  for element in _raw_pdf_elements:
+      if "unstructured.documents.elements.Table" in str(type(element)):
+          tables.append(str(element))
+      elif "unstructured.documents.elements.CompositeElement" in str(type(element)):
+          texts.append(str(element))
+  return texts, tables
+
+
+
+# Generate summaries of text elements
+def generate_text_summaries(texts, tables, summarize_texts=False):
+  """
+  Summarize text elements
+  texts: List of str
+  tables: List of str
+  summarize_texts: Bool to summarize texts
+  """
+
+  # Prompt
+  prompt_text = """You are an assistant tasked with summarizing tables and text for retrieval. \
+  These summaries will be embedded and used to retrieve the raw text or table elements. \
+  Give a concise summary of the table or text that is well-optimized for retrieval. Table \
+  or text: {element} """
+
+  prompt = PromptTemplate.from_template(prompt_text)
+  empty_response = RunnableLambda(
+      lambda x: AIMessage(content="Error processing document")
+  )
+  # Text summary chain
+
+  if time_hist_color == 'gpt-4-turbo':
+    model = ChatOpenAI(
+      temperature=0, model= "gpt-4-turbo", openai_api_key = openai.api_key, max_tokens=1024)
+
+  else:
+    model = ChatGoogleGenerativeAI(
+        #temperature=0, model="gemini-pro", max_output_tokens=1024
+      temperature=0, model="gemini-1.5-pro-latest", max_output_tokens=1024
+    )
+
+  summarize_chain = {"element": lambda x: x} | prompt | model | StrOutputParser()
+
+  # Initialize empty summaries
+  text_summaries = []
+  table_summaries = []
+
+  # Apply to text if texts are provided and summarization is requested
+  if texts and summarize_texts:
+      text_summaries = summarize_chain.batch(texts, {"max_concurrency": max_concurrecy})
+  elif texts:
+      text_summaries = texts
+
+  # Apply to tables if tables are provided
+  if tables:
+      table_summaries = summarize_chain.batch(tables, {"max_concurrency":max_concurrecy})
+
+  return text_summaries, table_summaries
+    
+
+                                                                                        
+
+
+def encode_image(image_path):
+  """Getting the base64 string"""
+  with open(image_path, "rb") as image_file:
+      return base64.b64encode(image_file.read()).decode("utf-8")
+st.write("images encoded")
+
+st.cache_data()
+def image_summarize(img_base64, prompt):
+  """Make image summary"""
+  if immage_sum_model == 'gpt-4-vision-preview':
+    model = ChatOpenAI(
+      temperature=0, model=immage_sum_model, openai_api_key = openai.api_key, max_tokens=1024)
+  else:
+    #model = ChatGoogleGenerativeAI(model="gemini-pro-vision", max_output_tokens=1024)
+    model = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", max_output_tokens=1024)
+
+  msg = model(
+      [
+          HumanMessage(
+              content=[
+                  {"type": "text", "text": prompt},
+                  {
+                      "type": "image_url",
+                      "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"},
+                  },
+              ]
+          )
+      ]
+  )
+  return msg.content
+
+
+
+def create_multi_vector_retriever(
+  vectorstore, text_summaries, texts, table_summaries, tables, image_summaries, images
+):
+  """
+  Create retriever that indexes summaries, but returns raw images or texts
+  """
+
+  # Initialize the storage layer
+  store = InMemoryStore()
+  id_key = "doc_id"
+
+  # Create the multi-vector retriever
+  retriever = MultiVectorRetriever(
+      vectorstore=vectorstore,
+      docstore=store,
+      id_key=id_key,
+  )
+  # Helper function to add documents to the vectorstore and docstore
+  def add_documents(retriever, doc_summaries, doc_contents):
+      doc_ids = [str(uuid.uuid4()) for _ in doc_contents]
+      summary_docs = [
+          Document(page_content=s, metadata={id_key: doc_ids[i]})
+          for i, s in enumerate(doc_summaries)
+      ]
+      retriever.vectorstore.add_documents(summary_docs)
+      retriever.docstore.mset(list(zip(doc_ids, doc_contents)))
+
+  # Add texts, tables, and images
+  # Check that text_summaries is not empty before adding
+  if text_summaries:
+      add_documents(retriever, text_summaries, texts)
+  # Check that table_summaries is not empty before adding
+  if table_summaries:
+      add_documents(retriever, table_summaries, tables)
+  # Check that image_summaries is not empty before adding
+  if image_summaries:
+      add_documents(retriever, image_summaries, images)
+  return retriever
+
+
+def looks_like_base64(sb):
+  """Check if the string looks like base64"""
+  return re.match("^[A-Za-z0-9+/]+[=]{0,2}$", sb) is not None
+
+
+def is_image_data(b64data):
+  """
+  Check if the base64 data is an image by looking at the start of the data
+  """
+  image_signatures = {
+      b"\xFF\xD8\xFF": "jpg",
+      b"\x89\x50\x4E\x47\x0D\x0A\x1A\x0A": "png",
+      b"\x47\x49\x46\x38": "gif",
+      b"\x52\x49\x46\x46": "webp",
+  }
+  try:
+      header = base64.b64decode(b64data)[:8]  # Decode and get the first 8 bytes
+      for sig, format in image_signatures.items():
+          if header.startswith(sig):
+              return True
+      return False
+  except Exception:
+      return False
+
+def resize_base64_image(base64_string, size=(128, 128)):
+  """
+  Resize an image encoded as a Base64 string
+  """
+  # Decode the Base64 string
+  img_data = base64.b64decode(base64_string)
+  img = Image.open(io.BytesIO(img_data))
+
+  # Resize the image
+  resized_img = img.resize(size, Image.LANCZOS)
+
+  # Save the resized image to a bytes buffer
+  buffered = io.BytesIO()
+  resized_img.save(buffered, format=img.format)
+  # Encode the resized image to Base64
+  return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+#context creation
+def split_image_text_types(docs):
+  """
+  Split base64-encoded images and texts
+  """
+  b64_images = []
+  texts = []
+  for doc in docs:
+      # Check if the document is of type Document and extract page_content if so
+      if isinstance(doc, Document):
+          doc = doc.page_content
+      if looks_like_base64(doc) and is_image_data(doc):
+          doc = resize_base64_image(doc, size=(1300, 600))
+          b64_images.append(doc)
+      else:
+          texts.append(doc)
+  if len(b64_images) > 0:
+      return {"images": b64_images[:1], "texts": []}
+  return {"images": b64_images, "texts": texts}
+
+
+#response generation
+def img_prompt_func(data_dict):
+  """
+  Join the context into a single string
+  """
+  formatted_texts = "\n".join(data_dict["context"]["texts"])
+  messages = []
+
+  # Adding the text for analysis
+  text_message = {
+      "type": "text",
+      "text": (
+          "You are an AI scientist tasking with providing factual answers.\n"
+          "You will be given a mixed of text, tables, and image(s) usually of charts or graphs.\n"
+          "Use this information to provide answers related to the user question. \n"
+          "Final answer should be easily readable and structured. \n"
+          f"User-provided question: {data_dict['question']}\n\n"
+          "Text and / or tables:\n"
+          f"{formatted_texts}"
+      ),
+  }
+  messages.append(text_message)
+  # Adding image(s) to the messages if present
+  if data_dict["context"]["images"]:
+      for image in data_dict["context"]["images"]:
+          image_message = {
+              "type": "image_url",
+              "image_url": {"url": f"data:image/jpeg;base64,{image}"},
+          }
+          messages.append(image_message)
+  return [HumanMessage(content=messages)]
+
+
+def multi_modal_rag_chain(retriever):
+
+    # Multi-modal LLM
+    model = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", max_output_tokens=1024)
+    #try:
+      #model = ChatGoogleGenerativeAI(model="gemini-pro-vision", max_output_tokens=1024)
+    #except Exception as e:
+      #model = ChatGoogleGenerativeAI(model="gemini-pro", max_output_tokens=1024)
+
+    #model = ChatOpenAI(model="gpt-4-vision-preview", openai_api_key = openai.api_key, max_tokens=1024)
+
+    # RAG pipeline
+    chain = (
+        {
+            "context": retriever | RunnableLambda(split_image_text_types),
+            "question": RunnablePassthrough(),
+        }
+        | RunnableLambda(img_prompt_func)
+        | model
+        | StrOutputParser()
+    )
+
+    return chain
+
+
+
+def main():
+    load_dotenv()
+    st.set_page_config(layout='wide', initial_sidebar_state='expanded')
+
+    with open('style.css') as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    
+    st.sidebar.header('Multi-Modal RAG App`PDF`')
+    
+    st.sidebar.subheader('Text Summarization Model')
+    time_hist_color = st.sidebar.selectbox('Summarize by', ('gpt-4-turbo', 'gemini-1.5-pro-latest'))
+    
+    st.sidebar.subheader('Image Summarization Model')
+    immage_sum_model = st.sidebar.selectbox('Summarize by', ('gpt-4-vision-preview', 'gemini-1.5-pro-latest'))
+    
+    #st.sidebar.subheader('Embedding Model')
+    #embedding_model = st.sidebar.selectbox('Select data', ('OpenAIEmbeddings', 'GoogleGenerativeAIEmbeddings'))
+    
+    st.sidebar.subheader('Response Generation Model')
+    generation_model = st.sidebar.selectbox('Select data', ('gpt-4-vision-preview', 'gemini-1.5-pro-latest'))
+    
+    #st.sidebar.subheader('Line chart parameters')
+    #plot_data = st.sidebar.multiselect('Select data', ['temp_min', 'temp_max'], ['temp_min', 'temp_max'])
+    max_concurrecy = st.sidebar.slider('Maximum Concurrency', 3, 4, 7)
+    
+    st.sidebar.markdown('''
+    ---
+    Multi-Modal RAG App with Multi Vector Retriever
+    ''')
+    
+    #st.write(tables)
+
+    
+    bullet_point = "◇"
+    #uploaded_file = st.file_uploader(label = "Upload your file",type="pdf")
+    #question = st.text_input('Enter a question') 
+    #if uploaded_file is not None:
     temp_file="./temp.pdf"
     with open(temp_file,"wb") as file:
         file.write(uploaded_file.getvalue())
@@ -104,24 +374,7 @@ if uploaded_file is not None:
         image_output_dir_path=image_path
     )
 
-    # Categorize elements by type
-    def categorize_elements(_raw_pdf_elements):
-      """
-      Categorize extracted elements from a PDF into tables and texts.
-      raw_pdf_elements: List of unstructured.documents.elements
-      """
-      tables = []
-      texts = []
-      for element in _raw_pdf_elements:
-          if "unstructured.documents.elements.Table" in str(type(element)):
-              tables.append(str(element))
-          elif "unstructured.documents.elements.CompositeElement" in str(type(element)):
-              texts.append(str(element))
-      return texts, tables
-    
-
     texts, tables = categorize_elements(pdf_elements)
-
     if "texts" not in st.session_state or "tables" not in st.session_state:
         # Create session state variables
         with st.spinner("Categorizing Text & Table elements....."):
@@ -133,56 +386,8 @@ if uploaded_file is not None:
         texts = st.session_state["texts"]
         tables = st.session_state["tables"]
     st.write(f"{bullet_point} \t\tCategorize elements completed")  
-
-    # Generate summaries of text elements
-    def generate_text_summaries(texts, tables, summarize_texts=False):
-      """
-      Summarize text elements
-      texts: List of str
-      tables: List of str
-      summarize_texts: Bool to summarize texts
-      """
-
-      # Prompt
-      prompt_text = """You are an assistant tasked with summarizing tables and text for retrieval. \
-      These summaries will be embedded and used to retrieve the raw text or table elements. \
-      Give a concise summary of the table or text that is well-optimized for retrieval. Table \
-      or text: {element} """
-
-      prompt = PromptTemplate.from_template(prompt_text)
-      empty_response = RunnableLambda(
-          lambda x: AIMessage(content="Error processing document")
-      )
-      # Text summary chain
-
-      if time_hist_color == 'gpt-4-turbo':
-        model = ChatOpenAI(
-          temperature=0, model= "gpt-4-turbo", openai_api_key = openai.api_key, max_tokens=1024)
-
-      else:
-        model = ChatGoogleGenerativeAI(
-            #temperature=0, model="gemini-pro", max_output_tokens=1024
-          temperature=0, model="gemini-1.5-pro-latest", max_output_tokens=1024
-        )
-
-      summarize_chain = {"element": lambda x: x} | prompt | model | StrOutputParser()
-
-      # Initialize empty summaries
-      text_summaries = []
-      table_summaries = []
-
-      # Apply to text if texts are provided and summarization is requested
-      if texts and summarize_texts:
-          text_summaries = summarize_chain.batch(texts, {"max_concurrency": max_concurrecy})
-      elif texts:
-          text_summaries = texts
-
-      # Apply to tables if tables are provided
-      if tables:
-          table_summaries = summarize_chain.batch(tables, {"max_concurrency":max_concurrecy})
-
-      return text_summaries, table_summaries
-        
+    
+    
     st.title("Summary generation process:-")
     st.write(f"{bullet_point} Summary generation process started")
     
@@ -197,39 +402,8 @@ if uploaded_file is not None:
         text_summaries = st.session_state["text_summaries"]
         table_summaries = st.session_state["table_summaries"]
     st.write(f"{bullet_point} \t\tText & Table summaries generation completed")  
-                                                                                            
-
     
-    def encode_image(image_path):
-      """Getting the base64 string"""
-      with open(image_path, "rb") as image_file:
-          return base64.b64encode(image_file.read()).decode("utf-8")
-    st.write("images encoded")
-
-    st.cache_data()
-    def image_summarize(img_base64, prompt):
-      """Make image summary"""
-      if immage_sum_model == 'gpt-4-vision-preview':
-        model = ChatOpenAI(
-          temperature=0, model=immage_sum_model, openai_api_key = openai.api_key, max_tokens=1024)
-      else:
-        #model = ChatGoogleGenerativeAI(model="gemini-pro-vision", max_output_tokens=1024)
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", max_output_tokens=1024)
     
-      msg = model(
-          [
-              HumanMessage(
-                  content=[
-                      {"type": "text", "text": prompt},
-                      {
-                          "type": "image_url",
-                          "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"},
-                      },
-                  ]
-              )
-          ]
-      )
-      return msg.content
     
     st.write("images encoded2")
     # Store base64 encoded images
@@ -262,46 +436,7 @@ if uploaded_file is not None:
     st.write(f"{bullet_point} \t\tImage summaries generation completed") 
     st.write(f"{bullet_point} Summary generation process completed")
     
-
     
-    def create_multi_vector_retriever(
-      vectorstore, text_summaries, texts, table_summaries, tables, image_summaries, images
-    ):
-      """
-      Create retriever that indexes summaries, but returns raw images or texts
-      """
-    
-      # Initialize the storage layer
-      store = InMemoryStore()
-      id_key = "doc_id"
-    
-      # Create the multi-vector retriever
-      retriever = MultiVectorRetriever(
-          vectorstore=vectorstore,
-          docstore=store,
-          id_key=id_key,
-      )
-      # Helper function to add documents to the vectorstore and docstore
-      def add_documents(retriever, doc_summaries, doc_contents):
-          doc_ids = [str(uuid.uuid4()) for _ in doc_contents]
-          summary_docs = [
-              Document(page_content=s, metadata={id_key: doc_ids[i]})
-              for i, s in enumerate(doc_summaries)
-          ]
-          retriever.vectorstore.add_documents(summary_docs)
-          retriever.docstore.mset(list(zip(doc_ids, doc_contents)))
-    
-      # Add texts, tables, and images
-      # Check that text_summaries is not empty before adding
-      if text_summaries:
-          add_documents(retriever, text_summaries, texts)
-      # Check that table_summaries is not empty before adding
-      if table_summaries:
-          add_documents(retriever, table_summaries, tables)
-      # Check that image_summaries is not empty before adding
-      if image_summaries:
-          add_documents(retriever, image_summaries, images)
-      return retriever
     
     if 'vectorstore' not in st.session_state:
         vectorstore = Chroma(collection_name="mm_rag_mistral01",embedding_function=OpenAIEmbeddings(openai_api_key = openai.api_key))
@@ -318,143 +453,24 @@ if uploaded_file is not None:
         retriever_multi_vector_img = st.session_state["retriever_multi_vector_img"]
     st.write(f"{bullet_point} Multi vector retreiver is created")  
     
-
-if 'retriever_multi_vector_img' in st.session_state:
-
+    
+    if 'retriever_multi_vector_img' in st.session_state:
+    
     retriever_multi_vector_img = st.session_state["retriever_multi_vector_img"]
 
-    def looks_like_base64(sb):
-      """Check if the string looks like base64"""
-      return re.match("^[A-Za-z0-9+/]+[=]{0,2}$", sb) is not None
-    
-    
-    def is_image_data(b64data):
-      """
-      Check if the base64 data is an image by looking at the start of the data
-      """
-      image_signatures = {
-          b"\xFF\xD8\xFF": "jpg",
-          b"\x89\x50\x4E\x47\x0D\x0A\x1A\x0A": "png",
-          b"\x47\x49\x46\x38": "gif",
-          b"\x52\x49\x46\x46": "webp",
-      }
-      try:
-          header = base64.b64decode(b64data)[:8]  # Decode and get the first 8 bytes
-          for sig, format in image_signatures.items():
-              if header.startswith(sig):
-                  return True
-          return False
-      except Exception:
-          return False
-    
-    def resize_base64_image(base64_string, size=(128, 128)):
-      """
-      Resize an image encoded as a Base64 string
-      """
-      # Decode the Base64 string
-      img_data = base64.b64decode(base64_string)
-      img = Image.open(io.BytesIO(img_data))
-    
-      # Resize the image
-      resized_img = img.resize(size, Image.LANCZOS)
-    
-      # Save the resized image to a bytes buffer
-      buffered = io.BytesIO()
-      resized_img.save(buffered, format=img.format)
-      # Encode the resized image to Base64
-      return base64.b64encode(buffered.getvalue()).decode("utf-8")
-    
-    #context creation
-    def split_image_text_types(docs):
-      """
-      Split base64-encoded images and texts
-      """
-      b64_images = []
-      texts = []
-      for doc in docs:
-          # Check if the document is of type Document and extract page_content if so
-          if isinstance(doc, Document):
-              doc = doc.page_content
-          if looks_like_base64(doc) and is_image_data(doc):
-              doc = resize_base64_image(doc, size=(1300, 600))
-              b64_images.append(doc)
-          else:
-              texts.append(doc)
-      if len(b64_images) > 0:
-          return {"images": b64_images[:1], "texts": []}
-      return {"images": b64_images, "texts": texts}
-    
-    
-    #response generation
-    def img_prompt_func(data_dict):
-      """
-      Join the context into a single string
-      """
-      formatted_texts = "\n".join(data_dict["context"]["texts"])
-      messages = []
-    
-      # Adding the text for analysis
-      text_message = {
-          "type": "text",
-          "text": (
-              "You are an AI scientist tasking with providing factual answers.\n"
-              "You will be given a mixed of text, tables, and image(s) usually of charts or graphs.\n"
-              "Use this information to provide answers related to the user question. \n"
-              "Final answer should be easily readable and structured. \n"
-              f"User-provided question: {data_dict['question']}\n\n"
-              "Text and / or tables:\n"
-              f"{formatted_texts}"
-          ),
-      }
-      messages.append(text_message)
-      # Adding image(s) to the messages if present
-      if data_dict["context"]["images"]:
-          for image in data_dict["context"]["images"]:
-              image_message = {
-                  "type": "image_url",
-                  "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-              }
-              messages.append(image_message)
-      return [HumanMessage(content=messages)]
-
-    
-
-    def multi_modal_rag_chain(retriever):
-
-        # Multi-modal LLM
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-pro-latest", max_output_tokens=1024)
-        #try:
-          #model = ChatGoogleGenerativeAI(model="gemini-pro-vision", max_output_tokens=1024)
-        #except Exception as e:
-          #model = ChatGoogleGenerativeAI(model="gemini-pro", max_output_tokens=1024)
-    
-        #model = ChatOpenAI(model="gpt-4-vision-preview", openai_api_key = openai.api_key, max_tokens=1024)
-
-        # RAG pipeline
-        chain = (
-            {
-                "context": retriever | RunnableLambda(split_image_text_types),
-                "question": RunnablePassthrough(),
-            }
-            | RunnableLambda(img_prompt_func)
-            | model
-            | StrOutputParser()
-        )
-
-        return chain
 
 
-    
 
 
-    chain = multi_modal_rag_chain(retriever_multi_vector_img)
-    if(question):
-        response=chain.invoke(question)
-        st.write('Response from InfoGenie:')
-        with st.container(height=300):
-            st.write(response)
 
-    
-    
-    
-    
+chain = multi_modal_rag_chain(retriever_multi_vector_img)
+if(question):
+    response=chain.invoke(question)
+    st.write('Response from InfoGenie:')
+    with st.container(height=300):
+        st.write(response)
+
+
+
+
+
