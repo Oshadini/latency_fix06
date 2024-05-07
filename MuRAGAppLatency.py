@@ -446,8 +446,8 @@ if uploaded_file is not None:
 
     question = st.text_input('Enter a question')    
         
-    if user_question
-        user_input(question)
+        if user_question
+            user_input(question)
     
     
     
