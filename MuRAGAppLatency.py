@@ -444,10 +444,10 @@ if uploaded_file is not None:
         response = chain.invoke(question)
         st.write("Reply: ", response)
 
-    question = st.text_input('Enter a question')    
+        question = st.text_input('Enter a question')    
         
-        if user_question
-            user_input(question)
+    if user_question:
+        user_input(question)
     
     
     
