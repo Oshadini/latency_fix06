@@ -136,6 +136,7 @@ if uploaded_file is not None:
     st.write(f"{bullet_point} \t\tCategorize elements completed")  
 
     # Generate summaries of text elements
+    st.cache_data()
     def generate_text_summaries(texts, tables, summarize_texts=False):
       """
       Summarize text elements
@@ -199,15 +200,13 @@ if uploaded_file is not None:
         table_summaries = st.session_state["table_summaries"]
     st.write(f"{bullet_point} \t\tText & Table summaries generation completed")  
                                                                                             
-    
-    
 
     
     def encode_image(image_path):
       """Getting the base64 string"""
       with open(image_path, "rb") as image_file:
           return base64.b64encode(image_file.read()).decode("utf-8")
-    
+    st.cache_data
     def image_summarize(img_base64, prompt):
       """Make image summary"""
       if immage_sum_model == 'gpt-4-vision-preview':
@@ -232,6 +231,35 @@ if uploaded_file is not None:
       )
       return msg.content
     
+    
+    # Store base64 encoded images
+    img_base64_list = []
+    
+    # Store image summaries
+    image_summaries = []
+    
+    # Prompt
+    prompt = """You are an assistant tasked with summarizing images for retrieval. \
+    These summaries will be embedded and used to retrieve the raw image. \
+    Give a concise summary of the image that is well optimized for retrieval."""
+    
+    if 'image_elements' not in st.session_state:
+        with st.spinner("Generating Images summaries......"):
+          # Apply to images
+          for img_file in sorted(os.listdir('./figures')):
+              if img_file.endswith(".jpg"):
+                  img_path = os.path.join('./figures', img_file)
+                  base64_image = encode_image(img_path)
+                  img_base64_list.append(base64_image)
+                  image_summaries.append(image_summarize(base64_image, prompt))
+        st.session_state["img_base64_list"] = img_base64_list
+        st.session_state["image_summaries"] = image_summaries
+    else:
+        img_base64_lists = st.session_state["img_base64_list"]  
+        image_summaries = st.session_state["image_summaries"]  
+    
+    st.write(f"{bullet_point} \t\tImage summaries generation completed") 
+    st.write(f"{bullet_point} Summary generation process completed")
     
     # Store base64 encoded images
     img_base64_list = []
