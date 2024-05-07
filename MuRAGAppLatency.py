@@ -73,7 +73,7 @@ generation_model = st.sidebar.selectbox('Select data', ('gpt-4-vision-preview', 
 
 #st.sidebar.subheader('Line chart parameters')
 #plot_data = st.sidebar.multiselect('Select data', ['temp_min', 'temp_max'], ['temp_min', 'temp_max'])
-max_concurrecy = st.sidebar.slider('Maximum Concurrency', 3, 4, 5, 6, 7, 8, 9, 10)
+max_concurrecy = st.sidebar.slider('Maximum Concurrency', 3, 4, 7)
 
 st.sidebar.markdown('''
 ---
