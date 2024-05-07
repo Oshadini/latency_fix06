@@ -449,7 +449,7 @@ if uploaded_file is not None:
 if(question):
     response=chain.invoke(question)
     st.write('Response:')
-        st.write(response)
+    st.write(response)
     
     
     
